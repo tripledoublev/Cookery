@@ -98,3 +98,14 @@ Then recipe3.txt will be applied from frame 800 to the final frame. Each recipe 
 > for i in {1..10}; do input=spongebob.jpg; output=$(date +"%d-%m-%Y-%H-%M-%S")-$input; mkdir $output;./cook -n 100 -o $output -f $input; done
 
 Published by Arcangel Surfware (SRF-061)
+
+### Browser Edition
+
+A lightweight browser is deployed to github pages. No build-step required—just open `index.html` in a modern browser.
+
+1. Choose an image.
+2. Set iterations and strength.
+3. Hit **Cook!** to let the algorithm work its culinary magic.
+4. Download the resulting image.
+
+Internally, the browser client re-implements a subset of ImageMagick operations using Canvas 2D APIs and JavaScript.  Exact parity with the shell script isn't guaranteed, but the cooking spirit is preserved.
