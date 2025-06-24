@@ -291,4 +291,62 @@ imageInput.addEventListener('change', async e => {
 });
 
 startBtn.addEventListener('click', cook);
-downloadBtn.addEventListener('click', download); 
+downloadBtn.addEventListener('click', download);
+
+// Drag and drop functionality for canvas
+canvas.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  canvas.style.opacity = '0.7';
+  canvas.style.border = '3px dashed #007bff';
+});
+
+canvas.addEventListener('dragenter', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+});
+
+canvas.addEventListener('dragleave', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  // Only reset styles if we're actually leaving the canvas
+  if (!canvas.contains(e.relatedTarget)) {
+    canvas.style.opacity = '1';
+    canvas.style.border = 'none';
+  }
+});
+
+canvas.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  
+  // Reset visual feedback
+  canvas.style.opacity = '1';
+  canvas.style.border = 'none';
+  
+  const files = e.dataTransfer.files;
+  if (files.length > 0) {
+    const file = files[0];
+    
+    // Check if it's an image file
+    if (file.type.startsWith('image/')) {
+      try {
+        await loadImage(file);
+        drawImageToCanvas(originalImage);
+        imgLoaded = true;
+        startBtn.disabled = false;
+        downloadBtn.disabled = true;
+      } catch (err) {
+        console.error(err);
+        alert('Failed to load image.');
+      }
+    } else {
+      alert('Please drop an image file.');
+    }
+  }
+});
+
+// Canvas click to trigger file input
+canvas.addEventListener('click', () => {
+  imageInput.click();
+}); 
