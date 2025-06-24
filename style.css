@@ -45,6 +45,10 @@ h1 {
   justify-content: center;
 }
 
+.file-input {
+  padding-top: 1rem;
+}
+
 .file-input input[type="file"] {
   display: none;
 }
@@ -127,15 +131,34 @@ button:disabled {
   flex-direction: column;
   justify-content: center;
   border: 1px solid black;
+  position: relative;
+}
+
+.preview::before {
+  content: "Drop an image here or use the button above";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #666;
+  font-size: 18px;
+  pointer-events: none;
+  opacity: 0.3;
+  z-index: -1;
+  text-align: center;
 }
 
 canvas {
   max-width: 100%;
   height: auto;
-  border: 1px solid #fff;
+  border: 2px dotted #fff;
   background: #000;
-  image-rendering: pixelated;
-  filter: grayscale(100%) contrast(120%) brightness(110%);
+  transition: opacity 0.2s ease, border 0.2s ease;
+  cursor: pointer;
+}
+
+canvas:hover {
+  opacity: 0.9;
 }
 
 /* Add deep-fried noise + jitter effects */
