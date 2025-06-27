@@ -17,6 +17,7 @@ body {
   align-items: flex-start;
   min-height: 100vh;
   padding: 2rem;
+  flex-direction: column;
 }
 
 .container {
@@ -202,4 +203,30 @@ body::before {
 @keyframes hueShift {
   0% { filter: hue-rotate(0deg); }
   100% { filter: hue-rotate(45deg); }
+}
+
+/* Footer credits */
+.credits {
+  margin-top: 2rem;
+  padding: 1rem;
+  text-align: center;
+  opacity: 0.7;
+  width: 100%;
+}
+
+.credits p {
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+  color: #fff;
+}
+
+.credits a {
+  color: #fff;
+  text-decoration: underline;
+  transition: all 0.2s;
+}
+
+.credits a:hover {
+  color: #ccc;
+  text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
 }
