@@ -14,7 +14,7 @@ body {
   color: #fff;
   display: flex;
   justify-content: center;
-  align-items: flex-start;
+  align-items: center;
   min-height: 100vh;
   padding: 2rem;
   flex-direction: column;
@@ -54,7 +54,7 @@ h1 {
   display: none;
 }
 
-.file-input span {
+#selectImageBtn, #takePhotoBtn {
   background: #000000;
   color: #fff;
   padding: 0.5rem 1rem;
@@ -63,6 +63,7 @@ h1 {
   cursor: pointer;
   text-shadow: 1px 1px 0 #000;
   transition: transform 0.1s;
+  font-family: monospace;
 }
 
 .file-input span:active {
@@ -214,6 +215,12 @@ body::before {
   width: 100%;
 }
 
+@media (max-width: 768px) {
+ .credits { 
+   text-align: left;
+ }
+}
+
 .credits p {
   margin: 0.5rem 0;
   font-size: 0.9rem;
@@ -229,4 +236,32 @@ body::before {
 .credits a:hover {
   color: #ccc;
   text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+}
+
+.recipe-section {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-direction: row;
+  align-items: start;
+  gap: 1rem;
+  justify-content: center;
+}
+
+#recipeToggleBtn {
+  margin-bottom: 1rem;
+}
+
+.recipe-btns {
+ display: flex;
+ flex-direction: column;
+}
+
+.recipe-content textarea {
+  width: 100%;
+  min-height: 150px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid #fff;
+  color: #fff;
+  padding: 0.5rem;
+  font-family: inherit;
 }
