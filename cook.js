@@ -7,15 +7,23 @@
 
 // Select DOM elements
 const imageInput = document.getElementById('imageInput');
-const iterationsInput = document.getElementById('iterations');
-const strengthInput = document.getElementById('strength');
+const selectImageBtn = document.getElementById('selectImageBtn');
+
 const startBtn = document.getElementById('startBtn');
 const downloadBtn = document.getElementById('downloadBtn');
+downloadBtn.style.display = 'none'; // Hide initially
+const recipeToggleBtn = document.getElementById('recipeToggleBtn');
+const recipeContent = document.getElementById('recipeContent');
+const recipeText = document.getElementById('recipeText');
+const generateNewRecipeBtn = document.getElementById('generateNewRecipeBtn');
+const webcamFeed = document.getElementById('webcamFeed');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
+const takePhotoBtn = document.getElementById('takePhotoBtn');
 
 let originalImage = new Image();
 let imgLoaded = false;
+let webcamStream = null;
 
 // Utility: load a file into <img>
 function loadImage(file) {
@@ -30,6 +38,44 @@ function loadImage(file) {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+// Start webcam feed
+async function startWebcam() {
+  try {
+    webcamStream = await navigator.mediaDevices.getUserMedia({ video: true });
+    webcamFeed.srcObject = webcamStream;
+    webcamFeed.play();
+    takePhotoBtn.disabled = false; // Enable button on success
+  } catch (err) {
+    console.error('Error accessing webcam:', err);
+    alert('Could not access webcam. Please ensure you have a webcam and have granted permission.');
+    takePhotoBtn.disabled = true; // Disable button on failure
+  }
+}
+
+// Take photo from webcam feed
+function takePhoto() {
+  const { videoWidth, videoHeight } = webcamFeed;
+  canvas.width = videoWidth;
+  canvas.height = videoHeight;
+  ctx.drawImage(webcamFeed, 0, 0, videoWidth, videoHeight);
+  originalImage.src = canvas.toDataURL(); // Store the captured image as original
+  imgLoaded = true;
+  startBtn.disabled = false;
+  downloadBtn.disabled = true;
+  downloadBtn.style.display = 'none';
+  stopWebcam(); // Stop webcam after taking photo
+  webcamFeed.style.display = 'none'; // Hide webcam feed
+  canvas.style.display = 'block'; // Show canvas
+}
+
+// Stop webcam feed
+function stopWebcam() {
+  if (webcamStream) {
+    webcamStream.getTracks().forEach(track => track.stop());
+    webcamFeed.srcObject = null;
+  }
 }
 
 // Draw image to fit canvas while preserving aspect ratio
@@ -177,51 +223,73 @@ function compressQuality(quality) {
   });
 }
 
-async function op_compress(strength) {
-  const rand = randInt(1, 100);
-  // Mirror the bash logic: factor = 101 - rand * strength
-  const factor = Math.max(1, Math.round(101 - rand * strength)); // 1–100
-  // Map ImageMagick quality (1–100, 1 = worst) to JPEG quality (0.01–1)
-  // Square-mapped for heavier artefacts
+async function op_compress(explicitValue = null) {
+  let factor;
+  if (explicitValue !== null) {
+    factor = parseInt(explicitValue, 10);
+  } else {
+    const rand = randInt(1, 100);
+    factor = Math.max(1, Math.round(101 - rand * 1)); // 1–100
+  }
   const jpegQ = Math.max(0.01, Math.pow(factor / 100, 2));
   await compressQuality(jpegQ);
+  return `-quality ${factor}`;
 }
 
 // Operation wrappers mirroring original names
-function op_modulate(strength) {
-  const factor = randInt(100, 500);
-  const sat = ((factor - 100) * strength) + 100; // approximate scaling
+function op_modulate(explicitValue = null) {
+  let factor;
+  if (explicitValue !== null) {
+    factor = parseInt(explicitValue, 10);
+  } else {
+    factor = randInt(100, 500);
+  }
+  const sat = ((factor - 100) * 1) + 100; // approximate scaling
   adjustSaturation(ctx, sat);
   // Add brightness swing for deeper fry
-  const brightSwing = randInt(-50, 80) * strength;
+  const brightSwing = randInt(-50, 80) * 1;
   adjustBrightness(ctx, brightSwing);
+  return `-modulate ${factor}`;
 }
 
-function op_contrast(strength) {
-  const val = randInt(10, 200);
-  const c = val * strength;
+function op_contrast(explicitValue = null) {
+  let val;
+  if (explicitValue !== null) {
+    val = parseInt(explicitValue, 10);
+  } else {
+    val = randInt(10, 200);
+  }
+  const c = val * 1;
   adjustContrast(ctx, c);
+  return `-contrast`;
 }
 
-function op_resize(strength) {
-  let rand = randInt(5, 95);
+function op_resize(explicitValue = null) {
+  let rand;
+  if (explicitValue !== null) {
+    rand = parseInt(explicitValue, 10);
+  } else {
+    rand = randInt(5, 95);
+  }
   const { width } = canvas;
   let px = ((rand / 100) * width);
-  px = ((px - width) * strength) + width;
+  px = ((px - width) * 1) + width;
   px = Math.max(1, Math.floor(px));
   resizeShuffle(ctx, px);
+  return `-resize ${rand}%`;
 }
 
-function op_edge() {
+function op_edge(explicitValue = null) {
   const kernel = [
     -1, -1, -1,
     -1, 8, -1,
     -1, -1, -1,
   ];
   convolve(ctx, kernel);
+  return `-edge 1`;
 }
 
-function op_normalize() {
+function op_normalize(explicitValue = null) {
   // simple mean normalization
   const { width, height } = canvas;
   const imgData = ctx.getImageData(0, 0, width, height);
@@ -239,32 +307,80 @@ function op_normalize() {
     data[i + 2] = clamp(((data[i + 2] - min) / range) * 255);
   }
   ctx.putImageData(imgData, 0, 0);
+  return `-normalize`;
 }
 
-function op_noise(strength) {
-  const amt = Math.round(60 * strength); // up to ±60 RGB
+function op_noise(explicitValue = null) {
+  let amt;
+  if (explicitValue !== null) {
+    amt = parseInt(explicitValue, 10);
+  } else {
+    amt = Math.round(60 * 1);
+  }
   addNoise(ctx, amt);
+  return `-noise ${amt}`;
 }
 
 const operations = [op_modulate, op_compress, op_contrast, op_resize, op_edge, op_noise, op_normalize];
 
+const operationMap = {
+  '-modulate': op_modulate,
+  '-quality': op_compress,
+  '-contrast': op_contrast,
+  '-resize': op_resize,
+  '-edge': op_edge,
+  '-noise': op_noise,
+  '-normalize': op_normalize,
+};
+
 async function cook() {
   if (!imgLoaded) return;
-  const iterations = parseInt(iterationsInput.value, 10) || 5;
-  const strength = (parseInt(strengthInput.value, 10) || 100) / 100; // convert to 0-1
 
   // Reset to original first
   drawImageToCanvas(originalImage);
 
-  for (let i = 0; i < iterations; i++) {
-    const op = operations[randInt(0, operations.length - 1)];
-    await op(strength);
-  }
+  const recipeLines = recipeText.value.split('\n').filter(line => line.trim() !== '');
 
+  for (const line of recipeLines) {
+    const parts = line.split(' ');
+    const command = parts[0];
+    const value = parts.length > 1 ? parts[1] : null;
+
+    const opFunction = operationMap[command];
+    if (opFunction) {
+      await opFunction(value);
+    } else {
+      console.warn(`Unknown recipe command: ${command}`);
+    }
+  }
   downloadBtn.disabled = false;
+  downloadBtn.style.display = 'inline-block';
 }
 
+async function generateRandomRecipeString() {
+  const iterations = 5; // Default iterations
+  let recipe = [];
+  for (let i = 0; i < iterations; i++) {
+    const op = operations[randInt(0, operations.length - 1)];
+    // Call op function in a "dry run" to get the recipe string
+    // Pass null for explicitValue as we want random generation here
+    recipe.push(await op(null));
+  }
+  return recipe.join('\n');
+}
+
+// Initial recipe generation on load
+window.addEventListener('load', async () => {
+  recipeText.value = await generateRandomRecipeString();
+  canvas.style.display = 'block'; // Canvas visible by default
+  webcamFeed.style.display = 'none'; // Webcam hidden by default
+});
+
 function download() {
+  if (!imgLoaded) {
+    alert('Please load an image first.');
+    return;
+  }
   const link = document.createElement('a');
   link.download = 'cooked-image.jpg';
   canvas.toBlob(blob => {
@@ -284,6 +400,12 @@ imageInput.addEventListener('change', async e => {
     imgLoaded = true;
     startBtn.disabled = false;
     downloadBtn.disabled = true;
+    downloadBtn.style.display = 'none'; // Hide download button on new image load
+    stopWebcam(); // Stop webcam when image is loaded via file input
+    webcamFeed.style.display = 'none'; // Hide webcam feed
+    canvas.style.display = 'block'; // Show canvas
+    takePhotoBtn.textContent = 'Use webcam'; // Reset button text
+    takePhotoBtn.disabled = false; // Enable button
   } catch (err) {
     console.error(err);
     alert('Failed to load image.');
@@ -292,6 +414,39 @@ imageInput.addEventListener('change', async e => {
 
 startBtn.addEventListener('click', cook);
 downloadBtn.addEventListener('click', download);
+generateNewRecipeBtn.addEventListener('click', async () => {
+  recipeText.value = await generateRandomRecipeString();
+});
+takePhotoBtn.addEventListener('click', async () => {
+  if (takePhotoBtn.textContent === 'Use webcam') {
+    // Switch to webcam mode
+    try {
+      await startWebcam();
+      canvas.style.display = 'none';
+      webcamFeed.style.display = 'block';
+      takePhotoBtn.textContent = 'Take Photo';
+    } catch (err) {
+      console.error('Error accessing webcam:', err);
+      alert('Could not access webcam. Please ensure you have a webcam and have granted permission.');
+    }
+  } else if (takePhotoBtn.textContent === 'Take Photo') {
+    // Take photo mode
+    takePhoto();
+    takePhotoBtn.textContent = 'Use webcam';
+  }
+});
+
+recipeToggleBtn.addEventListener('click', () => {
+  if (recipeContent.style.display === 'none') {
+    recipeContent.style.display = 'block';
+    recipeToggleBtn.textContent = 'Hide Recipe';
+    generateNewRecipeBtn.style.display = 'inline-block'; // Show the new button
+  } else {
+    recipeContent.style.display = 'none';
+    recipeToggleBtn.textContent = 'Show Recipe';
+    generateNewRecipeBtn.style.display = 'none'; // Hide the new button
+  }
+});
 
 // Drag and drop functionality for canvas
 canvas.addEventListener('dragover', (e) => {
@@ -336,6 +491,12 @@ canvas.addEventListener('drop', async (e) => {
         imgLoaded = true;
         startBtn.disabled = false;
         downloadBtn.disabled = true;
+        downloadBtn.style.display = 'none'; // Hide download button on new image load
+        stopWebcam(); // Stop webcam when image is loaded via drag and drop
+        webcamFeed.style.display = 'none'; // Hide webcam feed
+        canvas.style.display = 'block'; // Show canvas
+        takePhotoBtn.textContent = 'Use webcam'; // Reset button text
+        takePhotoBtn.disabled = false; // Enable button
       } catch (err) {
         console.error(err);
         alert('Failed to load image.');
@@ -346,7 +507,8 @@ canvas.addEventListener('drop', async (e) => {
   }
 });
 
-// Canvas click to trigger file input
-canvas.addEventListener('click', () => {
+selectImageBtn.addEventListener('click', () => {
   imageInput.click();
-}); 
+});
+
+ 
