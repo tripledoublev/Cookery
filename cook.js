@@ -10,9 +10,9 @@ const imageInput = document.getElementById('imageInput');
 const selectImageBtn = document.getElementById('selectImageBtn');
 
 const startBtn = document.getElementById('startBtn');
+startBtn.style.display = 'none';
 const downloadBtn = document.getElementById('downloadBtn');
 downloadBtn.style.display = 'none'; // Hide initially
-const recipeToggleBtn = document.getElementById('recipeToggleBtn');
 const recipeContent = document.getElementById('recipeContent');
 const recipeText = document.getElementById('recipeText');
 const generateNewRecipeBtn = document.getElementById('generateNewRecipeBtn');
@@ -62,6 +62,7 @@ function takePhoto() {
   ctx.drawImage(webcamFeed, 0, 0, videoWidth, videoHeight);
   originalImage.src = canvas.toDataURL(); // Store the captured image as original
   imgLoaded = true;
+  startBtn.style.display = 'inline-block';
   startBtn.disabled = false;
   downloadBtn.disabled = true;
   downloadBtn.style.display = 'none';
@@ -398,6 +399,7 @@ imageInput.addEventListener('change', async e => {
     await loadImage(file);
     drawImageToCanvas(originalImage);
     imgLoaded = true;
+    startBtn.style.display = 'inline-block';
     startBtn.disabled = false;
     downloadBtn.disabled = true;
     downloadBtn.style.display = 'none'; // Hide download button on new image load
@@ -436,17 +438,7 @@ takePhotoBtn.addEventListener('click', async () => {
   }
 });
 
-recipeToggleBtn.addEventListener('click', () => {
-  if (recipeContent.style.display === 'none') {
-    recipeContent.style.display = 'block';
-    recipeToggleBtn.textContent = 'Hide Recipe';
-    generateNewRecipeBtn.style.display = 'inline-block'; // Show the new button
-  } else {
-    recipeContent.style.display = 'none';
-    recipeToggleBtn.textContent = 'Show Recipe';
-    generateNewRecipeBtn.style.display = 'none'; // Hide the new button
-  }
-});
+
 
 // Drag and drop functionality for canvas
 canvas.addEventListener('dragover', (e) => {
@@ -489,6 +481,7 @@ canvas.addEventListener('drop', async (e) => {
         await loadImage(file);
         drawImageToCanvas(originalImage);
         imgLoaded = true;
+        startBtn.style.display = 'inline-block';
         startBtn.disabled = false;
         downloadBtn.disabled = true;
         downloadBtn.style.display = 'none'; // Hide download button on new image load
