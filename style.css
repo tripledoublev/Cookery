@@ -43,7 +43,7 @@ h1 {
   flex-wrap: wrap;
   gap: 1rem;
   margin: 1.5rem 0;
-  justify-content: center;
+  justify-content: left;
 }
 
 .file-input {
@@ -244,7 +244,7 @@ body::before {
   flex-direction: row;
   align-items: start;
   gap: 1rem;
-  justify-content: center;
+  justify-content: left;
 }
 
 #recipeToggleBtn {
