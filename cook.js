@@ -17,13 +17,31 @@ const recipeContent = document.getElementById('recipeContent');
 const recipeText = document.getElementById('recipeText');
 const generateNewRecipeBtn = document.getElementById('generateNewRecipeBtn');
 const webcamFeed = document.getElementById('webcamFeed');
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
+let canvas = document.getElementById('canvas');
+let ctx = canvas.getContext('2d');
 const takePhotoBtn = document.getElementById('takePhotoBtn');
+const fullscreenCookBtn = document.getElementById('fullscreenCookBtn');
+const fullscreenCookContainer = document.getElementById('fullscreenCookContainer');
+const fullscreenCookCanvas = document.getElementById('fullscreenCookCanvas');
+const exitFullscreenBtn = document.getElementById('exitFullscreenBtn');
+const toggleRecipeBtn = document.getElementById('toggleRecipeBtn');
+const fullscreenRecipeBox = document.getElementById('fullscreenRecipeBox');
+const fullscreenRecipeTextarea = document.getElementById('fullscreenRecipeTextarea');
+const closeRecipeBtn = document.getElementById('closeRecipeBtn');
 
 let originalImage = new Image();
 let imgLoaded = false;
 let webcamStream = null;
+
+// Fullscreen real-time cook mode state
+let isFullscreenCookActive = false;
+let isPaused = false;
+let fullscreenCookAnimationFrame = null;
+let fullscreenCookCtx = null;
+let fullscreenWebcamStream = null;
+let currentRecipe = '';
+let lastRecipeChangeTime = 0;
+const RECIPE_CHANGE_INTERVAL = 2500; // Change recipe every 2.5 seconds
 
 // Utility: load a file into <img>
 function loadImage(file) {
@@ -209,13 +227,16 @@ function clamp(v) {
 // Compress by re-encoding the canvas to JPEG with low quality to introduce artifacts
 function compressQuality(quality) {
   // quality expected 0–1
+  // Capture current canvas and ctx to work with swapped contexts
+  const currentCanvas = canvas;
+  const currentCtx = ctx;
   return new Promise(resolve => {
-    canvas.toBlob(blob => {
+    currentCanvas.toBlob(blob => {
       const img = new Image();
       const url = URL.createObjectURL(blob);
       img.onload = () => {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        currentCtx.clearRect(0, 0, currentCanvas.width, currentCanvas.height);
+        currentCtx.drawImage(img, 0, 0, currentCanvas.width, currentCanvas.height);
         URL.revokeObjectURL(url);
         resolve();
       };
@@ -272,11 +293,14 @@ function op_resize(explicitValue = null) {
   } else {
     rand = randInt(5, 95);
   }
-  const { width } = canvas;
+  // Capture current canvas to work with swapped contexts
+  const currentCanvas = canvas;
+  const currentCtx = ctx;
+  const { width } = currentCanvas;
   let px = ((rand / 100) * width);
   px = ((px - width) * 1) + width;
   px = Math.max(1, Math.floor(px));
-  resizeShuffle(ctx, px);
+  resizeShuffle(currentCtx, px);
   return `-resize ${rand}%`;
 }
 
@@ -292,8 +316,11 @@ function op_edge(explicitValue = null) {
 
 function op_normalize(explicitValue = null) {
   // simple mean normalization
-  const { width, height } = canvas;
-  const imgData = ctx.getImageData(0, 0, width, height);
+  // Capture current canvas/ctx to work with swapped contexts
+  const currentCanvas = canvas;
+  const currentCtx = ctx;
+  const { width, height } = currentCanvas;
+  const imgData = currentCtx.getImageData(0, 0, width, height);
   const data = imgData.data;
   let min = 255, max = 0;
   for (let i = 0; i < data.length; i += 4) {
@@ -307,7 +334,7 @@ function op_normalize(explicitValue = null) {
     data[i + 1] = clamp(((data[i + 1] - min) / range) * 255);
     data[i + 2] = clamp(((data[i + 2] - min) / range) * 255);
   }
-  ctx.putImageData(imgData, 0, 0);
+  currentCtx.putImageData(imgData, 0, 0);
   return `-normalize`;
 }
 
@@ -333,6 +360,65 @@ const operationMap = {
   '-noise': op_noise,
   '-normalize': op_normalize,
 };
+
+// Context-aware operation wrappers for fullscreen mode
+async function applyOperationToContext(targetCtx, operationName, explicitValue = null) {
+  // Save original context
+  const originalCtx = ctx;
+  const originalCanvas = canvas;
+  
+  // Temporarily swap context
+  ctx = targetCtx;
+  canvas = targetCtx.canvas;
+  
+  try {
+    const opFunction = operationMap[operationName];
+    if (opFunction) {
+      const result = opFunction(explicitValue);
+      // If it's a promise, await it with context still swapped
+      if (result && typeof result.then === 'function') {
+        await result;
+      }
+      return result;
+    } else {
+      console.warn('Operation not found:', operationName, 'Available:', Object.keys(operationMap));
+    }
+  } catch (err) {
+    console.error('Error in operation', operationName, ':', err);
+    throw err;
+  } finally {
+    // Restore original context after operation completes
+    ctx = originalCtx;
+    canvas = originalCanvas;
+  }
+  
+  return null;
+}
+
+// Apply recipe to a given canvas context
+async function applyRecipeToContext(targetCtx, recipe) {
+  if (!recipe || !recipe.trim()) {
+    console.warn('Empty recipe provided');
+    return;
+  }
+  
+  const recipeLines = recipe.split('\n').filter(line => line.trim() !== '');
+  console.log('Applying recipe with', recipeLines.length, 'operations:', recipeLines);
+  
+  for (const line of recipeLines) {
+    const parts = line.trim().split(' ');
+    const command = parts[0];
+    const value = parts.length > 1 ? parts[1] : null;
+    
+    if (!command) continue;
+    
+    try {
+      await applyOperationToContext(targetCtx, command, value);
+    } catch (err) {
+      console.error('Error applying operation', command, ':', err);
+    }
+  }
+}
 
 async function cook() {
   if (!imgLoaded) return;
@@ -368,6 +454,43 @@ async function generateRandomRecipeString() {
     recipe.push(await op(null));
   }
   return recipe.join('\n');
+}
+
+// Generate a light recipe with 4-7 operations for real-time performance
+async function generateLightRecipe() {
+  // Create a temporary canvas for recipe generation so operations can run
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = 100;
+  tempCanvas.height = 100;
+  const tempCtx = tempCanvas.getContext('2d');
+  
+  // Save original context
+  const originalCtx = ctx;
+  const originalCanvas = canvas;
+  
+  // Swap to temp context for recipe generation
+  ctx = tempCtx;
+  canvas = tempCanvas;
+  
+  try {
+    const iterations = randInt(4, 7); // 4-7 operations
+    let recipe = [];
+    
+    // Fill temp canvas with a dummy image so operations can process
+    tempCtx.fillStyle = '#808080';
+    tempCtx.fillRect(0, 0, 100, 100);
+    
+    for (let i = 0; i < iterations; i++) {
+      const op = operations[randInt(0, operations.length - 1)];
+      recipe.push(await op(null));
+    }
+    
+    return recipe.join('\n');
+  } finally {
+    // Restore original context
+    ctx = originalCtx;
+    canvas = originalCanvas;
+  }
 }
 
 // Initial recipe generation on load
@@ -418,6 +541,42 @@ startBtn.addEventListener('click', cook);
 downloadBtn.addEventListener('click', download);
 generateNewRecipeBtn.addEventListener('click', async () => {
   recipeText.value = await generateRandomRecipeString();
+  // Sync fullscreen textarea if fullscreen mode is active
+  if (isFullscreenCookActive) {
+    fullscreenRecipeTextarea.value = recipeText.value;
+  }
+  // If fullscreen mode is active, update the current recipe immediately
+  if (isFullscreenCookActive && recipeText.value && recipeText.value.trim()) {
+    currentRecipe = recipeText.value.trim();
+    lastRecipeChangeTime = Date.now();
+    console.log('Recipe updated from Generate New Recipe button:', currentRecipe);
+  }
+});
+
+// Update recipe in real-time when textarea changes (for fullscreen mode)
+function updateRecipeFromTextarea() {
+  const recipe = recipeText.value && recipeText.value.trim() ? recipeText.value.trim() : '';
+  if (isFullscreenCookActive && recipe) {
+    currentRecipe = recipe;
+    lastRecipeChangeTime = Date.now();
+    console.log('Recipe updated from textarea:', currentRecipe);
+  }
+}
+
+recipeText.addEventListener('input', updateRecipeFromTextarea);
+fullscreenRecipeTextarea.addEventListener('input', () => {
+  // Sync fullscreen textarea with main textarea and update recipe
+  recipeText.value = fullscreenRecipeTextarea.value;
+  updateRecipeFromTextarea();
+});
+
+// Toggle recipe box visibility
+toggleRecipeBtn.addEventListener('click', () => {
+  fullscreenRecipeBox.style.display = fullscreenRecipeBox.style.display === 'none' ? 'block' : 'none';
+});
+
+closeRecipeBtn.addEventListener('click', () => {
+  fullscreenRecipeBox.style.display = 'none';
 });
 takePhotoBtn.addEventListener('click', async () => {
   if (takePhotoBtn.textContent === 'Use webcam') {
@@ -502,6 +661,242 @@ canvas.addEventListener('drop', async (e) => {
 
 selectImageBtn.addEventListener('click', () => {
   imageInput.click();
+});
+
+// Fullscreen Real-Time Cook Mode Functions
+
+// Start fullscreen cook mode
+async function startFullscreenCookMode() {
+  try {
+    // Request fullscreen
+    if (!document.fullscreenElement) {
+      await document.documentElement.requestFullscreen();
+    }
+    
+    // Show fullscreen container
+    fullscreenCookContainer.style.display = 'block';
+    
+    // Hide webcam video element (we only show processed canvas)
+    webcamFeed.style.display = 'none';
+    
+    // Set canvas size to viewport
+    fullscreenCookCanvas.width = window.innerWidth;
+    fullscreenCookCanvas.height = window.innerHeight;
+    fullscreenCookCtx = fullscreenCookCanvas.getContext('2d');
+    
+    // Start webcam if not already running
+    if (!fullscreenWebcamStream) {
+      try {
+        fullscreenWebcamStream = await navigator.mediaDevices.getUserMedia({ 
+          video: { width: { ideal: 1280 }, height: { ideal: 720 } } 
+        });
+        webcamFeed.srcObject = fullscreenWebcamStream;
+        await webcamFeed.play();
+      } catch (err) {
+        console.error('Error accessing webcam:', err);
+        alert('Could not access webcam. Please ensure you have a webcam and have granted permission.');
+        stopFullscreenCookMode();
+        return;
+      }
+    }
+    
+    // Use recipe from textarea, or generate one if empty
+    if (recipeText.value && recipeText.value.trim()) {
+      currentRecipe = recipeText.value.trim();
+      fullscreenRecipeTextarea.value = currentRecipe; // Sync fullscreen textarea
+      console.log('Using recipe from textarea:', currentRecipe);
+    } else {
+      try {
+        currentRecipe = await generateLightRecipe();
+        recipeText.value = currentRecipe; // Update textarea with generated recipe
+        fullscreenRecipeTextarea.value = currentRecipe; // Sync fullscreen textarea
+        console.log('Generated initial recipe:', currentRecipe);
+      } catch (err) {
+        console.error('Error generating recipe:', err);
+        // Fallback recipe
+        currentRecipe = '-modulate 200\n-contrast';
+        recipeText.value = currentRecipe;
+        fullscreenRecipeTextarea.value = currentRecipe;
+      }
+    }
+    // Hide recipe box initially
+    fullscreenRecipeBox.style.display = 'none';
+    lastRecipeChangeTime = Date.now();
+    
+    // Start cooking loop
+    isFullscreenCookActive = true;
+    realTimeCookLoop();
+    
+  } catch (err) {
+    console.error('Error starting fullscreen mode:', err);
+    alert('Could not enter fullscreen mode. Your browser may not support it.');
+    stopFullscreenCookMode();
+  }
+}
+
+// Stop fullscreen cook mode
+function stopFullscreenCookMode() {
+  isFullscreenCookActive = false;
+  isPaused = false;
+  
+  // Cancel animation frame
+  if (fullscreenCookAnimationFrame !== null) {
+    cancelAnimationFrame(fullscreenCookAnimationFrame);
+    fullscreenCookAnimationFrame = null;
+  }
+  
+  // Stop webcam stream
+  if (fullscreenWebcamStream) {
+    fullscreenWebcamStream.getTracks().forEach(track => track.stop());
+    fullscreenWebcamStream = null;
+    webcamFeed.srcObject = null;
+  }
+  
+  // Hide container
+  fullscreenCookContainer.style.display = 'none';
+  
+  // Exit fullscreen
+  if (document.fullscreenElement) {
+    document.exitFullscreen();
+  }
+}
+
+// Real-time cooking loop
+async function realTimeCookLoop() {
+  if (!isFullscreenCookActive || !fullscreenWebcamStream) {
+    return;
+  }
+  
+  // If paused, just keep the loop running but skip processing
+  if (isPaused) {
+    fullscreenCookAnimationFrame = requestAnimationFrame(realTimeCookLoop);
+    return;
+  }
+  
+  // Use recipe from textarea (it's now dynamic)
+  if (recipeText.value && recipeText.value.trim()) {
+    currentRecipe = recipeText.value.trim();
+  } else {
+    // Fallback if textarea is empty
+    currentRecipe = '-modulate 200\n-contrast';
+  }
+  
+  // Check if webcam is ready
+  if (webcamFeed.readyState === webcamFeed.HAVE_ENOUGH_DATA && webcamFeed.videoWidth > 0) {
+    const videoWidth = webcamFeed.videoWidth;
+    const videoHeight = webcamFeed.videoHeight;
+    
+    // Create temporary canvas for processing
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = videoWidth;
+    tempCanvas.height = videoHeight;
+    const tempCtx = tempCanvas.getContext('2d');
+    
+    // Draw current webcam frame to temp canvas
+    tempCtx.drawImage(webcamFeed, 0, 0, videoWidth, videoHeight);
+    
+    // Apply cooking transformations - ONLY show processed result
+    if (currentRecipe && currentRecipe.trim()) {
+      try {
+        await applyRecipeToContext(tempCtx, currentRecipe);
+      } catch (err) {
+        console.error('Error applying recipe:', err);
+        // If recipe fails, still show something processed - apply a simple effect
+        adjustContrast(tempCtx, 50);
+      }
+    }
+    
+    // Draw ONLY the cooked/processed frame to fullscreen canvas (scaled to fit)
+    const containerWidth = fullscreenCookCanvas.width;
+    const containerHeight = fullscreenCookCanvas.height;
+    const videoAspect = videoWidth / videoHeight;
+    const containerAspect = containerWidth / containerHeight;
+    
+    let drawWidth, drawHeight, drawX, drawY;
+    
+    if (videoAspect > containerAspect) {
+      // Video is wider - fit to width
+      drawWidth = containerWidth;
+      drawHeight = containerWidth / videoAspect;
+      drawX = 0;
+      drawY = (containerHeight - drawHeight) / 2;
+    } else {
+      // Video is taller - fit to height
+      drawWidth = containerHeight * videoAspect;
+      drawHeight = containerHeight;
+      drawX = (containerWidth - drawWidth) / 2;
+      drawY = 0;
+    }
+    
+    // Clear and draw only the processed canvas
+    fullscreenCookCtx.fillStyle = '#000';
+    fullscreenCookCtx.fillRect(0, 0, containerWidth, containerHeight);
+    fullscreenCookCtx.drawImage(tempCanvas, drawX, drawY, drawWidth, drawHeight);
+  }
+  
+  // Schedule next frame
+  fullscreenCookAnimationFrame = requestAnimationFrame(realTimeCookLoop);
+}
+
+// Event listeners for fullscreen mode
+fullscreenCookBtn.addEventListener('click', startFullscreenCookMode);
+exitFullscreenBtn.addEventListener('click', stopFullscreenCookMode);
+
+// Click on canvas to generate new recipe (and update textarea)
+fullscreenCookCanvas.addEventListener('click', async (e) => {
+  // Don't generate recipe if clicking on the recipe box
+  if (e.target === fullscreenRecipeBox || fullscreenRecipeBox.contains(e.target)) {
+    return;
+  }
+  if (isFullscreenCookActive) {
+    try {
+      const newRecipe = await generateLightRecipe();
+      recipeText.value = newRecipe; // Update textarea
+      fullscreenRecipeTextarea.value = newRecipe; // Sync fullscreen textarea
+      currentRecipe = newRecipe;
+      lastRecipeChangeTime = Date.now();
+      console.log('New recipe on click:', currentRecipe);
+    } catch (err) {
+      console.error('Error generating recipe on click:', err);
+      // Fallback recipe
+      const fallbackRecipe = '-modulate 200\n-contrast';
+      recipeText.value = fallbackRecipe;
+      fullscreenRecipeTextarea.value = fallbackRecipe;
+      currentRecipe = fallbackRecipe;
+    }
+  }
+});
+
+// Handle keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && isFullscreenCookActive) {
+    stopFullscreenCookMode();
+  }
+  // Spacebar to pause/resume
+  if (e.key === ' ' && isFullscreenCookActive && !e.repeat) {
+    e.preventDefault(); // Prevent page scroll
+    isPaused = !isPaused;
+    console.log(isPaused ? 'Paused' : 'Resumed');
+    if (!isPaused) {
+      // Resume immediately
+      realTimeCookLoop();
+    }
+  }
+});
+
+// Handle fullscreen change events
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && isFullscreenCookActive) {
+    stopFullscreenCookMode();
+  }
+});
+
+// Handle window resize in fullscreen mode
+window.addEventListener('resize', () => {
+  if (isFullscreenCookActive && fullscreenCookCanvas) {
+    fullscreenCookCanvas.width = window.innerWidth;
+    fullscreenCookCanvas.height = window.innerHeight;
+  }
 });
 
  

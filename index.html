@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
@@ -7,6 +8,7 @@
   <title>Cookery – Browser Edition</title>
   <link rel="stylesheet" href="style.css" />
 </head>
+
 <body>
   <main class="container">
     <h1>Cookery</h1>
@@ -24,6 +26,8 @@
       <div class="options">
         <button id="startBtn" disabled>Cook!</button>
         <button id="downloadBtn" disabled>Download Result</button>
+        <pre>or</pre>
+        <button id="fullscreenCookBtn">Fullscreen Real-Time Cookery</button>
       </div>
     </section>
 
@@ -39,15 +43,31 @@
 
   <footer class="credits">
     <p>
-      Original command-line utility by 
+      Original command-line utility by
       <a href="https://github.com/coryarcangel/Cookery" target="_blank" rel="noopener">Cory Arcangel</a>
     </p>
     <p>
-      Web interface by 
+      Web interface by
       <a href="https://github.com/tripledoublev/Cookery" target="_blank" rel="noopener">Vincent Charlebois</a>
     </p>
   </footer>
 
+  <!-- Fullscreen Real-Time Cook Mode -->
+  <div id="fullscreenCookContainer" class="fullscreen-cook-container">
+    <canvas id="fullscreenCookCanvas" class="fullscreen-cook-canvas"></canvas>
+    <button id="exitFullscreenBtn" class="exit-fullscreen-btn">Exit</button>
+    <button id="toggleRecipeBtn" class="toggle-recipe-btn">Recipe</button>
+    <div id="fullscreenRecipeBox" class="fullscreen-recipe-box">
+      <div class="fullscreen-recipe-header">
+        <span>Recipe</span>
+        <button id="closeRecipeBtn" class="close-recipe-btn">×</button>
+      </div>
+      <textarea id="fullscreenRecipeTextarea" class="fullscreen-recipe-textarea"
+        placeholder="Enter recipe commands..."></textarea>
+    </div>
+  </div>
+
   <script src="cook.js"></script>
 </body>
-</html> 
+
+</html>
